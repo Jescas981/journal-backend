@@ -1,0 +1,31 @@
+{
+  "name": "@journal/backend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --experimental-strip-types src/index.ts",
+    "start": "node --experimental-strip-types src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "test": "node --experimental-strip-types --test tests/progress.test.mjs tests/auth.test.mjs tests/calendar.test.mjs tests/application.test.mjs tests/architecture.test.mjs tests/http.test.mjs",
+    "test:cloud": "node --experimental-strip-types --test tests/cloud.test.mjs",
+    "test:api": "node --experimental-strip-types --test tests/tasks.test.mjs",
+    "cloud:check": "node --experimental-strip-types scripts/cloud-preflight.mjs",
+    "migrate:cloud": "node --experimental-strip-types scripts/migrate-firestore.mjs",
+    "lint": "oxlint src",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "dependencies": {
+    "@google-cloud/firestore": "^9.1.0",
+    "@google-cloud/storage": "^8.1.0",
+    "google-auth-library": "^9.15.1",
+    "google-gax": "^6.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "typescript": "~6.0.2",
+    "oxlint": "^1.79.0",
+    "prettier": "^3.9.6"
+  }
+}

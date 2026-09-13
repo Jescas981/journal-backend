@@ -1,0 +1,14 @@
+node_modules/
+dist/
+*.tsbuildinfo
+*.log
+.env
+.env.*
+!.env.example
+!.env.cloud.example
+data/
+migration-source/
+deploy/*.local.yaml
+.DS_Store
+.vscode/
+.idea/
