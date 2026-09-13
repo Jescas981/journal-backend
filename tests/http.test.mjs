@@ -201,3 +201,41 @@ test('HTTP boundary rejects invalid data, oversized payloads, foreign origins an
     store.close()
   }
 })
+
+test('entry saves through a proxy use the configured public origin, not upstream Host', async () => {
+  const store = createStore(':memory:')
+  const request = client(createTaskApi(store, 'https://journal.example.com'))
+  const path = '/api/entry?day=2026-09-13'
+  try {
+    const saved = await request(
+      path,
+      'PUT',
+      { tasks: [] },
+      {
+        host: 'backend.example.run.app',
+        origin: 'https://journal.example.com',
+        'x-forwarded-host': 'journal.example.com',
+      },
+    )
+    assert.equal(saved.status, 200)
+    for (const origin of [
+      'https://attacker.example.com',
+      'http://journal.example.com',
+      'null',
+    ]) {
+      const rejected = await request(
+        path,
+        'PUT',
+        { tasks: [] },
+        {
+          host: 'backend.example.run.app',
+          origin,
+          'x-forwarded-host': 'journal.example.com',
+        },
+      )
+      assert.equal(rejected.status, 403)
+    }
+  } finally {
+    store.close()
+  }
+})

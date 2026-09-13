@@ -28,7 +28,7 @@ const config = {
   origin: process.env.APP_ORIGIN || 'http://localhost:5173',
 }
 const { store, auth } = await createPersistence(backend, config)
-const taskApi = createTaskApi(store)
+const taskApi = createTaskApi(store, config.origin)
 const server = createServer((req, res) => {
   if (req.url === '/healthz' && ['GET', 'HEAD'].includes(req.method ?? '')) {
     res.writeHead(200, {

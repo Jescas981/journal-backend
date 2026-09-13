@@ -14,7 +14,8 @@
     "migrate:cloud": "node --experimental-strip-types scripts/migrate-firestore.mjs",
     "lint": "oxlint src",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "ci": "npm run lint && npm run build && npm test && npm run test:cloud && npm run test:api"
   },
   "dependencies": {
     "@google-cloud/firestore": "^9.1.0",

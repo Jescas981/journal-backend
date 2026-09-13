@@ -13,7 +13,11 @@ import { reportRoutes } from './controllers/reports.ts'
 import { taskRoutes } from './controllers/tasks.ts'
 import { templateRoutes } from './controllers/templates.ts'
 
-export function createRouter(services: Services) {
+export function createRouter(
+  services: Services,
+  appOrigin = 'http://localhost:5173',
+) {
+  const allowedOrigin = new URL(appOrigin).origin
   const routes = {
     ...taskRoutes(services.tasks),
     ...goalRoutes(services.goals),
@@ -39,13 +43,11 @@ export function createRouter(services: Services) {
       const id = url.searchParams.get('id') ?? ''
       if (route.day) checkDay(day)
       if (req.method !== 'GET' && req.headers.origin) {
-        let sameOrigin = false
-        try {
-          sameOrigin = new URL(req.headers.origin).host === req.headers.host
-        } catch {
-          /* Invalid origin is rejected. */
+        // The proxy's upstream Host is not the browser-facing origin.
+        // Trust the configured origin, never a caller-supplied forwarding header.
+        if (req.headers.origin !== allowedOrigin) {
+          throw new HttpError(403, 'Origen no permitido.')
         }
-        if (!sameOrigin) throw new HttpError(403, 'Origen no permitido.')
       }
       const method = req.method as keyof Route['methods']
       const handler = Object.hasOwn(route.methods, method)

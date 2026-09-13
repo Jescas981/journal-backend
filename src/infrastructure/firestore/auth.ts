@@ -100,6 +100,15 @@ export function createCloudAuth(
 
       const publicHost =  typeof forwardedHost === 'string' ? forwardedHost.split(',')[0].trim() : req.headers.host
 
+      console.log('origin-check', {
+  method: req.method,
+  requestOrigin: req.headers.origin,
+  expectedOrigin: origin,
+  equal: req.headers.origin === origin,
+  host: req.headers.host,
+  forwardedHost: req.headers['x-forwarded-host'],
+})
+
       if (publicHost !== new URL(origin).host) {
         json(res, 400, {
           error: 'Abre la aplicación desde su dirección configurada.',

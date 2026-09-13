@@ -4,6 +4,9 @@ import type { JournalRepository } from './application/ports/journal-repository.d
 import { createServices } from './application/create-services.ts'
 import { createRouter } from './http/router.ts'
 
-export function createTaskApi(repository: JournalRepository) {
-  return createRouter(createServices(repository))
+export function createTaskApi(
+  repository: JournalRepository,
+  appOrigin = 'http://localhost:5173',
+) {
+  return createRouter(createServices(repository), appOrigin)
 }
