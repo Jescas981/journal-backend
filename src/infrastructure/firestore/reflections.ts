@@ -42,11 +42,15 @@ export function createReflectionsRepository(db: CloudDatabase) {
           ]),
         ),
       }
-      return db.run(['daily_reflections'], (t) => {
-        t.daily_reflections = t.daily_reflections.filter((r) => r.day !== day)
-        t.daily_reflections.push(record)
-        return clean(record)
-      })
+      return db.run(
+        ['daily_reflections'],
+        (t) => {
+          t.daily_reflections = t.daily_reflections.filter((r) => r.day !== day)
+          t.daily_reflections.push(record)
+          return clean(record)
+        },
+        { daily_reflections: [[{ field: 'day', op: '==', value: day }]] },
+      )
     },
   }
 }

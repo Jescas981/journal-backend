@@ -1,3 +1,4 @@
+import type { Selections, Filter } from './queries.d.ts'
 import { emptyReflection } from '../../domain/models.ts'
 import type {
   Goal,
@@ -23,6 +24,34 @@ import { clean } from './records.ts'
 export function createCloudStore(db: CloudDatabase) {
   const domain = <T>(action: (d: Domain) => T) =>
     db.run(taskTables, (t) => action(new Domain(t)))
+  const dayDomain = <T>(
+    day: string,
+    action: (d: Domain) => T,
+    ids: string[] = [],
+  ) => {
+    checkDay(day)
+    const byDay: Filter[] = [{ field: 'day', op: '==', value: day }]
+    const byIds = (field: string): Filter[][] => {
+      const unique = [...new Set(ids)]
+      return Array.from(
+        { length: Math.ceil(unique.length / 30) },
+        (_, index) => [
+          { field, op: 'in', value: unique.slice(index * 30, index * 30 + 30) },
+        ],
+      )
+    }
+    const selections: Selections = {
+      goals: [],
+      tasks: [byDay, ...byIds('id')],
+      template_occurrences: [byDay],
+      calendar_imports: [byDay, ...byIds('taskId')],
+    }
+    return db.run(
+      taskTables,
+      (tables) => action(new Domain(tables)),
+      selections,
+    )
+  }
   const records = {
     moods: createMoodsRepository(db),
     journals: createJournalsRepository(db),
@@ -31,13 +60,18 @@ export function createCloudStore(db: CloudDatabase) {
   }
   return {
     ...records,
-    tasks: (day?: string) => domain((d) => d.tasks(day)),
+    tasks: (day?: string) =>
+      day ? dayDomain(day, (d) => d.tasks(day)) : domain((d) => d.tasks()),
     saveTask: (day: string, task: TaskDraft, id?: string, update = false) =>
-      domain((d) => d.save(day, task, id, update)),
+      dayDomain(day, (d) => d.save(day, task, id, update), id ? [id] : []),
     saveDay: (day: string, tasks: Task[]) =>
-      domain((d) => d.saveDay(day, tasks)),
+      dayDomain(
+        day,
+        (d) => d.saveDay(day, tasks),
+        tasks.map((task) => task.id),
+      ),
     deleteTask: (day: string, id: string) =>
-      domain((d) => {
+      dayDomain(day, (d) => {
         d.noteRemoval(day, id)
         return {
           changes: d.remove('tasks', (t) => t.id === id && t.day === day),
@@ -88,8 +122,12 @@ export function createCloudStore(db: CloudDatabase) {
       ),
     reportEntries: async (start: string, end: string) => {
       const read = async (name: string) =>
-        (await db.all(name))
-          .filter((r) => r.day >= start && r.day <= end)
+        (
+          await db.all(name, [
+            { field: 'day', op: '>=', value: start },
+            { field: 'day', op: '<=', value: end },
+          ])
+        )
           .sort((a, b) => a.day.localeCompare(b.day))
           .map(clean)
       const [moods, journals, reflections, images] = await Promise.all(
@@ -125,7 +163,10 @@ export function createCloudStore(db: CloudDatabase) {
       }
     },
     templates: {
-      list: (day: string) => domain((d) => d.active(day)),
+      list: (day: string) =>
+        db.read(['task_templates', 'template_versions'], (tables) =>
+          new Domain(tables).active(day),
+        ),
       save: (draft: TaskDraft, day: string, id?: string, update = false) =>
         domain((d) => d.saveTemplate(draft, day, id, update)),
       applyToDay: (id: string, day: string, sourceDay: string) =>

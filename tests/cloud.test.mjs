@@ -15,8 +15,20 @@ import { EventEmitter } from 'node:events'
 
 class MemoryCloud {
   tables = Object.fromEntries(Object.keys(keys).map((k) => [k, []]))
-  async all(table) {
-    return structuredClone(this.tables[table])
+  reads = 0
+  matches(row, filters) {
+    return filters.every(({ field, op, value }) => {
+      if (op === '==') return row[field] === value
+      if (op === '>=') return row[field] >= value
+      if (op === '<=') return row[field] <= value
+      if (op === 'in') return value.includes(row[field])
+      throw new Error(`Unsupported filter ${op}`)
+    })
+  }
+  async all(table, filters = []) {
+    const rows = this.tables[table].filter((row) => this.matches(row, filters))
+    this.reads += rows.length
+    return structuredClone(rows)
   }
   async get(table, key) {
     return (await this.all(table)).find(
@@ -49,10 +61,29 @@ class MemoryCloud {
   async read(_names, action) {
     return action(structuredClone(this.tables))
   }
-  async run(names, action) {
-    const copy = structuredClone(this.tables)
+  async run(names, action, selections = {}) {
+    const copy = Object.fromEntries(Object.keys(keys).map((key) => [key, []]))
+    const loaded = {}
+    for (const name of names) {
+      copy[name] = structuredClone(
+        this.tables[name].filter((row) =>
+          (selections[name] ?? [[]]).some((filters) =>
+            this.matches(row, filters),
+          ),
+        ),
+      )
+      this.reads += copy[name].length
+      loaded[name] = new Set(copy[name].map((row) => documentId(name, row)))
+    }
     const result = action(copy)
-    for (const name of names) this.tables[name] = copy[name]
+    for (const name of names) {
+      this.tables[name] = [
+        ...this.tables[name].filter(
+          (row) => !loaded[name].has(documentId(name, row)),
+        ),
+        ...copy[name],
+      ]
+    }
     return result
   }
 }
@@ -332,4 +363,46 @@ test('Calendar key mismatch cannot silently retain an unreadable grant; reconnec
     (await db.get('calendar_connection', { id: 1 })).calendarId,
     'example-calendar',
   )
+})
+
+test('daily task reads and writes do not load or change historical tasks', async () => {
+  const db = new MemoryCloud()
+  const store = createCloudStore(db)
+  for (let i = 0; i < 1000; i++) {
+    db.tables.tasks.push({ ...draft, id: `history-${i}`, day: '2025-01-01' })
+  }
+  const history = structuredClone(db.tables.tasks)
+  const day = '2026-09-14'
+  const task = await store.saveTask(day, draft)
+  db.reads = 0
+  assert.equal((await store.tasks(day)).length, 1)
+  assert.equal(db.reads, 1)
+  await store.saveDay(day, [{ ...task, completed: true }])
+  assert.deepEqual(
+    db.tables.tasks.filter((t) => t.day !== day),
+    history,
+  )
+  await store.deleteTask(day, task.id)
+  assert.deepEqual(db.tables.tasks, history)
+})
+
+test('entry records are filtered by date and scoped edits preserve other records', async () => {
+  const db = new MemoryCloud()
+  const store = createCloudStore(db)
+  const oldDay = '2025-01-01'
+  const day = '2026-09-14'
+  const old = await store.journals.save(oldDay, 'Old', 'Keep this')
+  const current = await store.journals.save(day, 'Today', 'First')
+  db.reads = 0
+  assert.deepEqual(
+    (await store.journals.list(day)).map((r) => r.id),
+    [current.id],
+  )
+  assert.equal(db.reads, 1)
+  await store.journals.save(day, 'Today', 'Updated', current.id)
+  await assert.rejects(() => store.journals.save(day, 'Wrong', 'Wrong', old.id))
+  assert.equal(await store.journals.remove(day, old.id), false)
+  assert.deepEqual(await store.journals.list(oldDay), [old])
+  assert.equal(await store.journals.remove(day, current.id), true)
+  assert.deepEqual(await store.journals.list(day), [])
 })

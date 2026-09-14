@@ -1,3 +1,5 @@
+import type { Query } from '@google-cloud/firestore'
+import type { Filter, Selections } from './queries.d.ts'
 import { Firestore } from '@google-cloud/firestore'
 import { Storage } from '@google-cloud/storage'
 import { createHash } from 'node:crypto'
@@ -69,8 +71,14 @@ export class CloudDatabase {
     if (!keys[table]) throw new Error('Unknown collection')
     return this.firestore.collection(`journals/${this.namespace}/${table}`)
   }
-  async all(table: string): Promise<Row[]> {
-    return (await this.collection(table).get()).docs
+  query(table: string, filters: Filter[] = []): Query {
+    return filters.reduce<Query>(
+      (query, filter) => query.where(filter.field, filter.op, filter.value),
+      this.collection(table),
+    )
+  }
+  async all(table: string, filters: Filter[] = []): Promise<Row[]> {
+    return (await this.query(table, filters).get()).docs
       .map((doc) => doc.data())
       .sort((a, b) => (a._order || 0) - (b._order || 0))
   }
@@ -127,14 +135,29 @@ export class CloudDatabase {
       { readOnly: true },
     )
   }
-  async run<T>(names: string[], action: (tables: Tables) => T): Promise<T> {
+  async run<T>(
+    names: string[],
+    action: (tables: Tables) => T,
+    selections: Selections = {},
+  ): Promise<T> {
     return this.firestore.runTransaction(async (tx) => {
       const revision = this.firestore.doc(`journals/${this.namespace}`)
       const marker = await tx.get(revision)
       const tables: Tables = {}
       const originals: Record<string, Map<string, string>> = {}
       const snapshots = await Promise.all(
-        names.map((name) => tx.get(this.collection(name))),
+        names.map(async (name) => {
+          const groups = selections[name] ?? [[]]
+          const results = await Promise.all(
+            groups.map((filters) => tx.get(this.query(name, filters))),
+          )
+          const documents = new Map(
+            results.flatMap((result) =>
+              result.docs.map((doc) => [doc.id, doc] as const),
+            ),
+          )
+          return { docs: [...documents.values()] }
+        }),
       )
       for (const [index, name] of names.entries()) {
         const snapshot = snapshots[index]

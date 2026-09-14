@@ -19,10 +19,14 @@ export function createMoodsRepository(db: CloudDatabase) {
         recordedAt: new Date().toISOString(),
         _order: Date.now(),
       }
-      return db.run(['mood_records'], (t) => {
-        t.mood_records.push(record)
-        return clean(record)
-      })
+      return db.run(
+        ['mood_records'],
+        (t) => {
+          t.mood_records.push(record)
+          return clean(record)
+        },
+        { mood_records: [] },
+      )
     },
     remove: (day: string, id: string) => remove('mood_records', day, id),
   }
